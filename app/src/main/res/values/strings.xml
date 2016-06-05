@@ -1,3 +1,13 @@
 <resources>
     <string name="app_name">Aloe</string>
+
+    <string name="loading">Loading....</string>
+
+    <!-- Google Calendar Helper -->
+    <string name="google_login_button">Login with Google</string>
+    <string name="error_need_play_services">This app requires Google Play Services.
+        Please install Google Play Services on your device and relaunch this app.</string>
+    <string name="request_google_account_via_contacts">This app needs to access your Google account
+        (via Contacts).</string>
+
 </resources>
