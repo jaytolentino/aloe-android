@@ -7,7 +7,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.AsyncTask;
-import android.text.TextUtils;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
@@ -21,17 +20,15 @@ import com.google.api.client.json.jackson2.JacksonFactory;
 import com.google.api.client.util.DateTime;
 import com.google.api.client.util.ExponentialBackOff;
 import com.google.api.services.calendar.CalendarScopes;
-import com.google.api.services.calendar.model.Event;
 import com.google.api.services.calendar.model.Events;
 import com.onepinkhat.aloe.R;
 import com.onepinkhat.aloe.app.AloeApp;
 import com.onepinkhat.aloe.helpers.ConnectionDetector;
 import com.onepinkhat.aloe.helpers.UIUtils;
+import com.onepinkhat.aloe.models.EventsResult;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 
 import pub.devrel.easypermissions.AfterPermissionGranted;
 import pub.devrel.easypermissions.EasyPermissions;
@@ -52,6 +49,8 @@ public class GoogleCalendarHelper {
     private static final int REQUEST_GOOGLE_PLAY_SERVICES = 102;
     private static final int REQUEST_PERMISSION_GET_ACCOUNTS = 103;
 
+    private static final int DEFAULT_MAX_EVENT_RESULTS = 10;
+
     private static final String PREF_ACCOUNT_NAME_KEY = "accountNameKey";
 
     private Context context;
@@ -64,7 +63,7 @@ public class GoogleCalendarHelper {
 
     public interface GoogleCalendarHelperCallback {
         void startActivityForResult(Intent accountPickerIntent, int requestCode);
-        void onLoadFinished(String events);
+        void onLoadFinished(EventsResult eventsResult);
         void showErrorDialog(int connectionStatusCode, int requestCode);
     }
 
@@ -206,7 +205,7 @@ public class GoogleCalendarHelper {
      * An asynchronous task that handles the Google Calendar API call. Placing the API calls in
      * their own task ensures the UI stays responsive.
      */
-    private class MakeRequestTask extends AsyncTask<Void, Void, List<String>> {
+    private class MakeRequestTask extends AsyncTask<Void, Void, EventsResult> {
 
         private com.google.api.services.calendar.Calendar service = null;
         private Exception lastError = null;
@@ -216,7 +215,7 @@ public class GoogleCalendarHelper {
             JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
             service = new com.google.api.services.calendar.Calendar.Builder(
                     transport, jsonFactory, credential)
-                    .setApplicationName("Google Calendar API Android Quickstart")
+                    .setApplicationName(UIUtils.getString(R.string.app_name))
                     .build();
         }
 
@@ -226,9 +225,9 @@ public class GoogleCalendarHelper {
          * @param params no parameters needed for this task.
          */
         @Override
-        protected List<String> doInBackground(Void... params) {
+        protected EventsResult doInBackground(Void... params) {
             try {
-                return getDataFromApi();
+                return getEvents(DEFAULT_MAX_EVENT_RESULTS);
             } catch (Exception e) {
                 lastError = e;
                 cancel(true);
@@ -236,35 +235,16 @@ public class GoogleCalendarHelper {
             }
         }
 
-        /**
-         * Fetch a list of the next 10 events from the primary calendar.
-         *
-         * @return List of Strings describing returned events.
-         * @throws IOException
-         */
-        private List<String> getDataFromApi() throws IOException {
+        private EventsResult getEvents(int maxResults) throws IOException {
             // List the next 10 events from the primary calendar.
             DateTime now = new DateTime(System.currentTimeMillis());
-            List<String> eventStrings = new ArrayList<>();
             Events events = service.events().list("primary")
-                    .setMaxResults(10)
+                    .setMaxResults(maxResults)
                     .setTimeMin(now)
                     .setOrderBy("startTime")
                     .setSingleEvents(true)
                     .execute();
-            List<Event> items = events.getItems();
-
-            for (Event event : items) {
-                DateTime start = event.getStart().getDateTime();
-                if (start == null) {
-                    // All-day events don't have start times, so just use
-                    // the start date.
-                    start = event.getStart().getDate();
-                }
-                eventStrings.add(
-                        String.format("%s (%s)", event.getSummary(), start));
-            }
-            return eventStrings;
+            return new EventsResult(events);
         }
 
 
@@ -274,20 +254,17 @@ public class GoogleCalendarHelper {
         }
 
         @Override
-        protected void onPostExecute(List<String> output) {
-            String result;
-            if (output == null || output.size() == 0) {
-                result = "No results returned.";
-            } else {
-                output.add(0, "Data retrieved using the Google Calendar API:");
-                result = TextUtils.join("\n", output);
+        protected void onPostExecute(EventsResult output) {
+            EventsResult result = new EventsResult(output.getEvents());
+            if (output == null || output.getEventItems().size() == 0) {
+                result.setErrorMessage("No results returned.");
             }
             callback.onLoadFinished(result);
         }
 
         @Override
         protected void onCancelled() {
-            String result = null;
+            EventsResult result = new EventsResult();
             if (lastError != null) {
                 if (lastError instanceof GooglePlayServicesAvailabilityIOException) {
                     showGooglePlayServicesAvailabilityErrorDialog(
@@ -298,10 +275,11 @@ public class GoogleCalendarHelper {
                             ((UserRecoverableAuthIOException) lastError).getIntent(),
                             REQUEST_AUTHORIZATION);
                 } else {
-                    result = "The following error occurred:\n" + lastError.getMessage();
+                    result.setErrorMessage("The following error occurred:\n"
+                            + lastError.getMessage());
                 }
             } else {
-                result = "Request cancelled.";
+                result.setErrorMessage("Request cancelled.");
             }
             callback.onLoadFinished(result);
         }

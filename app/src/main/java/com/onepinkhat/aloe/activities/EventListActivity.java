@@ -8,9 +8,11 @@ import android.support.v7.app.AppCompatActivity;
 import android.widget.Button;
 
 import com.google.android.gms.common.GoogleApiAvailability;
+import com.google.api.services.calendar.model.Event;
 import com.onepinkhat.aloe.R;
 import com.onepinkhat.aloe.helpers.UIUtils;
 import com.onepinkhat.aloe.integrations.GoogleCalendarHelper;
+import com.onepinkhat.aloe.models.EventsResult;
 
 import org.apache.commons.lang3.StringUtils;
 
@@ -41,13 +43,18 @@ public class EventListActivity extends AppCompatActivity {
                     }
 
                     @Override
-                    public void onLoadFinished(String events) {
+                    public void onLoadFinished(EventsResult eventsResult) {
                         if (progressDialog != null) {
                             progressDialog.hide();
                             btnGoogleLogin.setEnabled(true);
 
-                            if (StringUtils.isNotEmpty(events)) {
-                                UIUtils.showToast(EventListActivity.this, events);
+                            if (StringUtils.isNotEmpty(eventsResult.getErrorMessage())) {
+                                UIUtils.showToast(EventListActivity.this,
+                                        eventsResult.getErrorMessage());
+                            } else {
+                                for (Event event : eventsResult.getEventItems()) {
+                                    UIUtils.showToast(EventListActivity.this, event.getSummary());
+                                }
                             }
                         }
                     }
